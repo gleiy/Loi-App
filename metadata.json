@@ -1,0 +1,6 @@
+{
+  "name": "IA English Tutor",
+  "description": "An interactive AI English tutor that uses Gemini for academic conversation and D-ID talking avatars for practice.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": []
+}
