@@ -205,18 +205,21 @@ export default function App() {
         setIsListening(false);
         
         const errorMessages: Record<string, string> = {
-          'network': "Speech cloud unreachable. Please check your internet connection or use Chrome/Edge.",
+          'network': "Speech service unreachable. Try using Google Chrome or checking your internet connection.",
           'not-allowed': "Microphone access denied. Please check your browser/system permissions.",
           'no-speech': "No speech detected. Please try again.",
           'language-not-supported': `Language ${selectedVoice.locale} is not supported by your browser.`,
-          'aborted': "Recognition was stopped manually."
+          'aborted': "Recognition was stopped manually.",
+          'service-not-allowed': "Speech service not allowed. Your browser might be blocking this feature."
         };
 
-        setMicError(errorMessages[event.error] || `Microphone error: ${event.error}`);
+        const friendlyMsg = errorMessages[event.error] || `Microphone error: ${event.error}`;
+        setMicError(friendlyMsg);
         
-        // If in call mode, we might want to stop the call to avoid infinite retry loops
-        if (event.error === 'network' || event.error === 'not-allowed') {
+        // If in call mode, we must stop the session on critical errors to prevent infinite loops
+        if (event.error === 'network' || event.error === 'not-allowed' || event.error === 'service-not-allowed') {
           setIsCallActive(false);
+          setIsListening(false);
         }
       };
 
@@ -505,20 +508,27 @@ export default function App() {
         <div className="p-6 bg-black/20 border-t border-white/5">
           {micError && (
             <motion.div 
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-between gap-3 text-red-500"
+              initial={{ opacity: 0, y: 10, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              className="mb-4 p-4 rounded-2xl bg-red-500/10 border border-red-500/20 flex flex-col gap-2 text-red-500"
             >
-              <div className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
-                <span className="text-[10px] font-bold uppercase tracking-widest">{micError}</span>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2 mt-0.5">
+                  <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
+                  <span className="text-[10px] font-bold uppercase tracking-[0.1em]">{micError}</span>
+                </div>
+                <button 
+                  onClick={() => setMicError(null)}
+                  className="text-[10px] font-bold uppercase tracking-widest opacity-60 hover:opacity-100 transition-opacity"
+                >
+                  Dismiss
+                </button>
               </div>
-              <button 
-                onClick={() => setMicError(null)}
-                className="text-xs hover:underline opacity-60 hover:opacity-100"
-              >
-                Dismiss
-              </button>
+              {micError.includes("Network") || micError.includes("Chrome") ? (
+                <p className="text-[9px] opacity-70 leading-relaxed italic">
+                  Tip: The Web Speech API works best on Desktop Chrome. Some other browsers require a stable connection to Google/Apple servers for real-time transcription.
+                </p>
+              ) : null}
             </motion.div>
           )}
           <form onSubmit={handleSubmit} className="relative">
