@@ -30,15 +30,16 @@ interface Voice {
   name: string;
   gender: "Female" | "Male";
   lang: string;
+  locale: string;
 }
 
 const VOICES: Voice[] = [
-  { id: "en-US-JennyNeural", name: "Jenny", gender: "Female", lang: "English (US)" },
-  { id: "en-US-AndrewNeural", name: "Andrew", gender: "Male", lang: "English (US)" },
-  { id: "en-GB-SoniaNeural", name: "Sonia", gender: "Female", lang: "English (UK)" },
-  { id: "en-GB-RyanNeural", name: "Ryan", gender: "Male", lang: "English (UK)" },
-  { id: "es-ES-ElviraNeural", name: "Elvira", gender: "Female", lang: "Spanish (ES)" },
-  { id: "es-MX-JorgeNeural", name: "Jorge", gender: "Male", lang: "Spanish (MX)" },
+  { id: "en-US-JennyNeural", name: "Jenny", gender: "Female", lang: "English (US)", locale: "en-US" },
+  { id: "en-US-AndrewNeural", name: "Andrew", gender: "Male", lang: "English (US)", locale: "en-US" },
+  { id: "en-GB-SoniaNeural", name: "Sonia", gender: "Female", lang: "English (UK)", locale: "en-GB" },
+  { id: "en-GB-RyanNeural", name: "Ryan", gender: "Male", lang: "English (UK)", locale: "en-GB" },
+  { id: "es-ES-ElviraNeural", name: "Elvira", gender: "Female", lang: "Spanish (ES)", locale: "es-ES" },
+  { id: "es-MX-JorgeNeural", name: "Jorge", gender: "Male", lang: "Spanish (MX)", locale: "es-MX" },
 ];
 
 type ThemeType = "midnight" | "library" | "cyber";
@@ -109,6 +110,7 @@ export default function App() {
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
   const [currentTalkId, setCurrentTalkId] = useState<string | null>(null);
   const [isListening, setIsListening] = useState(false);
+  const [micError, setMicError] = useState<string | null>(null);
   const [lastVideoUrl, setLastVideoUrl] = useState<string | null>(null);
   const [isCallActive, setIsCallActive] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
@@ -124,14 +126,14 @@ export default function App() {
     let timer: NodeJS.Timeout;
     if (isCallActive) {
       timer = setInterval(() => setCallDuration(prev => prev + 1), 1000);
-      if (!isGeneratingVideo && !isGeneratingText && !isListening) {
+      if (!isGeneratingVideo && !isGeneratingText && !isListening && !micError) {
         toggleListening();
       }
     } else {
       setCallDuration(0);
     }
     return () => clearInterval(timer);
-  }, [isCallActive, isGeneratingVideo, isGeneratingText]);
+  }, [isCallActive, isGeneratingVideo, isGeneratingText, isListening, micError]);
 
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -142,8 +144,9 @@ export default function App() {
   const toggleCall = () => {
     if (isCallActive) {
       setIsCallActive(false);
-      recognitionRef.current?.stop();
+      try { recognitionRef.current?.stop(); } catch(e) {}
     } else {
+      setMicError(null);
       setIsCallActive(true);
       setMessages(prev => [...prev, {
         id: Date.now().toString(),
@@ -164,14 +167,28 @@ export default function App() {
 
   // Speech Recognition Setup
   useEffect(() => {
-    if (typeof window !== "undefined" && ("webkitSpeechRecognition" in window || "SpeechRecognition" in window)) {
+    const isSpeechSupported = typeof window !== "undefined" && ("webkitSpeechRecognition" in window || "SpeechRecognition" in window);
+    
+    if (isSpeechSupported) {
       const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
-      recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = false;
-      recognitionRef.current.interimResults = false;
-      recognitionRef.current.lang = "en-US";
+      
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      
+      // Try to set language, but handle potential browser quirks
+      try {
+        recognition.lang = selectedVoice.locale;
+      } catch (e) {
+        recognition.lang = "en-US";
+      }
 
-      recognitionRef.current.onresult = (event: any) => {
+      recognition.onstart = () => {
+        setIsListening(true);
+        setMicError(null);
+      };
+
+      recognition.onresult = (event: any) => {
         const transcript = event.results[0][0].transcript;
         setInput(transcript);
         setIsListening(false);
@@ -183,23 +200,59 @@ export default function App() {
         }, 800);
       };
 
-      recognitionRef.current.onerror = () => {
+      recognition.onerror = (event: any) => {
+        console.error("Speech Recognition Error:", event.error);
+        setIsListening(false);
+        
+        const errorMessages: Record<string, string> = {
+          'network': "Speech cloud unreachable. Please check your internet connection or use Chrome/Edge.",
+          'not-allowed': "Microphone access denied. Please check your browser/system permissions.",
+          'no-speech': "No speech detected. Please try again.",
+          'language-not-supported': `Language ${selectedVoice.locale} is not supported by your browser.`,
+          'aborted': "Recognition was stopped manually."
+        };
+
+        setMicError(errorMessages[event.error] || `Microphone error: ${event.error}`);
+        
+        // If in call mode, we might want to stop the call to avoid infinite retry loops
+        if (event.error === 'network' || event.error === 'not-allowed') {
+          setIsCallActive(false);
+        }
+      };
+
+      recognition.onend = () => {
         setIsListening(false);
       };
 
-      recognitionRef.current.onend = () => {
-        setIsListening(false);
-      };
+      recognitionRef.current = recognition;
     }
-  }, []);
+  }, [selectedVoice.locale]);
 
   const toggleListening = () => {
+    if (!recognitionRef.current) {
+      setMicError("Speech recognition not supported in this browser.");
+      return;
+    }
+
     if (isListening) {
-      recognitionRef.current?.stop();
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {
+        console.error("Error stopping recognition:", e);
+      }
     } else {
-      setInput("");
-      recognitionRef.current?.start();
-      setIsListening(true);
+      try {
+        setMicError(null);
+        setInput("");
+        recognitionRef.current.start();
+      } catch (e) {
+        console.error("Error starting recognition:", e);
+        // Silently fail if already started, otherwise show error
+        if (e instanceof Error && !e.message.includes("already started")) {
+          setMicError("Could not start microphone.");
+        }
+        setIsListening(false);
+      }
     }
   };
 
@@ -450,6 +503,24 @@ export default function App() {
 
         {/* Improved Input */}
         <div className="p-6 bg-black/20 border-t border-white/5">
+          {micError && (
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-between gap-3 text-red-500"
+            >
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
+                <span className="text-[10px] font-bold uppercase tracking-widest">{micError}</span>
+              </div>
+              <button 
+                onClick={() => setMicError(null)}
+                className="text-xs hover:underline opacity-60 hover:opacity-100"
+              >
+                Dismiss
+              </button>
+            </motion.div>
+          )}
           <form onSubmit={handleSubmit} className="relative">
             <input
               type="text"
