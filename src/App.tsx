@@ -346,22 +346,24 @@ export default function App() {
 
     try {
       // Improved prompt with explicit instructions
+      // Include the user message in context since state hasn't updated yet in this render cycle
+      const context = [...messages, userMessage];
       const prompt = `You are a friendly and academic English tutor. 
       Help the user practice conversation, correct subtle mistakes, 
       and use interesting metaphors. Keep answers concise (max 2-3 sentences).
       
       Conversation History:
-      ${messages.slice(-5).map(m => `${m.role.toUpperCase()}: ${m.text}`).join("\n")}
+      ${context.slice(-6).map(m => `${m.role.toUpperCase()}: ${m.text}`).join("\n")}
       
       USER: "${textToSubmit}"
       TUTOR:`;
 
-      const result = await ai.models.generateContent({
+      const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: prompt
       });
-
-      const tutorText = result.text || "I'm sorry, I encountered an issue with my neural link. Could you repeat that?";
+      
+      const tutorText = response.text || "I'm sorry, I encountered an issue with my neural link. Could you repeat that?";
       setIsGeneratingText(false);
       
       const tutorMessageId = Date.now().toString();
