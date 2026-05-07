@@ -12,6 +12,7 @@ import {
   GraduationCap, 
   Loader2, 
   Volume2, 
+  VolumeX,
   RefreshCcw,
   MessageSquare,
   Sparkles,
@@ -120,24 +121,51 @@ export default function App() {
   const [callDuration, setCallDuration] = useState(0);
   const [selectedVoice, setSelectedVoice] = useState<Voice>(VOICES[0]);
   const [currentTheme, setCurrentTheme] = useState<Theme>(THEMES.midnight);
+  const [isMuted, setIsMuted] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsTab, setSettingsTab] = useState<"voices" | "themes">("voices");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
 
-  // Call Timer and Auto-Listening Logic
+  const [isMicEnabled, setIsMicEnabled] = useState(true);
+  const [isPlayingVideo, setIsPlayingVideo] = useState(false);
+
+  // Call Timer
   useEffect(() => {
     let timer: NodeJS.Timeout;
     if (isCallActive) {
       timer = setInterval(() => setCallDuration(prev => prev + 1), 1000);
-      if (!isGeneratingVideo && !isGeneratingText && !isListening && !micError) {
-        toggleListening();
-      }
     } else {
       setCallDuration(0);
     }
     return () => clearInterval(timer);
-  }, [isCallActive, isGeneratingVideo, isGeneratingText, isListening, micError]);
+  }, [isCallActive]);
+
+  // Auto-Listening Logic
+  const shouldBeListening = isCallActive && isMicEnabled && !isGeneratingVideo && !isGeneratingText && !isPlayingVideo && !micError;
+
+  useEffect(() => {
+    let restartTimer: NodeJS.Timeout;
+
+    if (shouldBeListening && !isListening) {
+      restartTimer = setTimeout(() => {
+        if (!recognitionRef.current) return;
+        try {
+          recognitionRef.current.start();
+        } catch (e) {
+          console.error("Auto-start mic Error:", e);
+        }
+      }, 300);
+    } else if (!shouldBeListening && isListening) {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {}
+      }
+    }
+
+    return () => clearTimeout(restartTimer);
+  }, [isCallActive, isMicEnabled, isGeneratingVideo, isGeneratingText, isPlayingVideo, isListening, micError]);
 
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -223,7 +251,10 @@ export default function App() {
       };
 
       recognition.onerror = (event: any) => {
-        if (event.error === 'no-speech') {
+        if (event.error === 'no-speech' || event.error === 'network') {
+          if (event.error === 'network') {
+            console.warn("Speech Recognition Network connection lost. Retrying quietly...");
+          }
           setIsListening(false);
           return;
         }
@@ -233,7 +264,6 @@ export default function App() {
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
         
         const errorMessages: Record<string, string> = {
-          'network': "Speech service unreachable. Try using Google Chrome or checking your internet connection.",
           'not-allowed': "Microphone access denied. Please check your browser/system permissions.",
           'language-not-supported': `Language ${selectedVoice.locale} is not supported by your browser.`,
           'aborted': "Recognition was stopped manually.",
@@ -243,7 +273,7 @@ export default function App() {
         const friendlyMsg = errorMessages[event.error] || `Microphone error: ${event.error}`;
         setMicError(friendlyMsg);
         
-        if (event.error === 'network' || event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
           setIsCallActive(false);
         }
       };
@@ -256,35 +286,6 @@ export default function App() {
       recognitionRef.current = recognition;
     }
   }, [selectedVoice.locale]);
-
-  const toggleListening = () => {
-    if (!recognitionRef.current) {
-      setMicError("Speech recognition not supported in this browser.");
-      return;
-    }
-
-    if (isListening) {
-      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-      try {
-        recognitionRef.current.stop();
-      } catch (e) {
-        console.error("Error stopping recognition:", e);
-      }
-    } else {
-      try {
-        setMicError(null);
-        setInput("");
-        recognitionRef.current.start();
-      } catch (e) {
-        console.error("Error starting recognition:", e);
-        // Silently fail if already started, otherwise show error
-        if (e instanceof Error && !e.message.includes("already started")) {
-          setMicError("Could not start microphone.");
-        }
-        setIsListening(false);
-      }
-    }
-  };
 
   // Poll for D-ID video status
   useEffect(() => {
@@ -575,19 +576,27 @@ export default function App() {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={isListening ? "Listening..." : "Message your tutor..."}
+              placeholder={shouldBeListening ? "Listening..." : "Message your tutor..."}
               disabled={isGeneratingText || isGeneratingVideo}
               className={`w-full ${currentTheme.card} border-white/10 rounded-2xl px-6 py-4 pr-24 text-sm outline-none transition-all disabled:opacity-50 focus:border-white/20`}
             />
             <div className="absolute right-2 top-2 bottom-2 flex gap-1">
               <button
                 type="button"
-                onClick={toggleListening}
+                onClick={() => setIsMicEnabled(!isMicEnabled)}
+                title={isMicEnabled ? "Mute Microphone" : "Unmute Microphone"}
                 className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
-                  isListening ? "bg-red-500 text-white animate-pulse" : "bg-white/5 opacity-40 hover:opacity-100"
+                  !isMicEnabled 
+                    ? "bg-red-500/20 text-red-400 hover:bg-red-500/30" 
+                    : shouldBeListening 
+                      ? "bg-red-500 text-white shadow-lg shadow-red-500/25" 
+                      : "bg-white/10 text-white hover:bg-white/20"
                 }`}
               >
-                {isListening ? <MicOff size={18} /> : <Mic size={18} />}
+                {/* Make microphone throb gently when actually listening */}
+                <div className={shouldBeListening ? "animate-pulse" : ""}>
+                  {!isMicEnabled ? <MicOff size={18} /> : <Mic size={18} />}
+                </div>
               </button>
               <button
                 type="submit"
@@ -625,11 +634,11 @@ export default function App() {
                 src={lastVideoUrl}
                 autoPlay
                 playsInline
+                muted={isMuted}
                 className="w-full h-full object-cover"
+                onPlay={() => setIsPlayingVideo(true)}
                 onEnded={() => {
-                  if (isCallActive) {
-                    toggleListening();
-                  }
+                  setIsPlayingVideo(false);
                 }}
               />
             ) : (
@@ -725,12 +734,26 @@ export default function App() {
                   <Phone size={24} />
                 </button>
               )}
-              <div className="w-14 h-14 rounded-full bg-white/10 backdrop-blur-md border border-white/10 flex items-center justify-center hover:bg-white/20 transition-all cursor-pointer">
-                <Volume2 size={24} className="text-white/60" />
-              </div>
-              <div className="w-14 h-14 rounded-full bg-white/10 backdrop-blur-md border border-white/10 flex items-center justify-center hover:bg-white/20 transition-all cursor-pointer">
+              <button 
+                onClick={() => setIsMuted(!isMuted)}
+                className="w-14 h-14 rounded-full bg-white/10 backdrop-blur-md border border-white/10 flex items-center justify-center hover:bg-white/20 transition-all cursor-pointer"
+              >
+                {isMuted ? (
+                  <VolumeX size={24} className="text-white/60" />
+                ) : (
+                  <Volume2 size={24} className="text-white/60" />
+                )}
+              </button>
+              <button 
+                onClick={() => {
+                  const currentIndex = VOICES.findIndex((v) => v.id === selectedVoice.id);
+                  const nextIndex = (currentIndex + 1) % VOICES.length;
+                  setSelectedVoice(VOICES[nextIndex]);
+                }}
+                className="w-14 h-14 rounded-full bg-white/10 backdrop-blur-md border border-white/10 flex items-center justify-center hover:bg-white/20 transition-all cursor-pointer"
+              >
                 <RefreshCcw size={24} className="text-white/60" />
-              </div>
+              </button>
             </div>
           </div>
 
