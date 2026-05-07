@@ -166,6 +166,8 @@ export default function App() {
   }, [messages]);
 
   // Speech Recognition Setup
+  const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   useEffect(() => {
     const isSpeechSupported = typeof window !== "undefined" && ("webkitSpeechRecognition" in window || "SpeechRecognition" in window);
     
@@ -173,10 +175,9 @@ export default function App() {
       const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
       
       const recognition = new SpeechRecognition();
-      recognition.continuous = false;
-      recognition.interimResults = false;
+      recognition.continuous = true;
+      recognition.interimResults = true;
       
-      // Try to set language, but handle potential browser quirks
       try {
         recognition.lang = selectedVoice.locale;
       } catch (e) {
@@ -189,20 +190,38 @@ export default function App() {
       };
 
       recognition.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        setInput(transcript);
-        setIsListening(false);
-        // Automatically submit after a short delay for a "hands-free" feel
-        setTimeout(() => {
-          if (transcript.trim()) {
-            handleSubmit();
+        let interimTranscript = "";
+        let finalTranscript = "";
+
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            finalTranscript += event.results[i][0].transcript;
+          } else {
+            interimTranscript += event.results[i][0].transcript;
           }
-        }, 800);
+        }
+
+        const currentText = (finalTranscript || interimTranscript).trim();
+        if (currentText) {
+          setInput(currentText);
+
+          // Reset silence timer whenever we get a result
+          if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+          
+          silenceTimerRef.current = setTimeout(() => {
+            if (currentText) {
+              handleSubmit(undefined, currentText);
+              // Stop recognition to process and let the response play
+              recognition.stop();
+            }
+          }, 3000); // 3 seconds of silence
+        }
       };
 
       recognition.onerror = (event: any) => {
         console.error("Speech Recognition Error:", event.error);
         setIsListening(false);
+        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
         
         const errorMessages: Record<string, string> = {
           'network': "Speech service unreachable. Try using Google Chrome or checking your internet connection.",
@@ -216,15 +235,14 @@ export default function App() {
         const friendlyMsg = errorMessages[event.error] || `Microphone error: ${event.error}`;
         setMicError(friendlyMsg);
         
-        // If in call mode, we must stop the session on critical errors to prevent infinite loops
         if (event.error === 'network' || event.error === 'not-allowed' || event.error === 'service-not-allowed') {
           setIsCallActive(false);
-          setIsListening(false);
         }
       };
 
       recognition.onend = () => {
         setIsListening(false);
+        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
       };
 
       recognitionRef.current = recognition;
@@ -238,6 +256,7 @@ export default function App() {
     }
 
     if (isListening) {
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
       try {
         recognitionRef.current.stop();
       } catch (e) {
@@ -301,9 +320,9 @@ export default function App() {
     setLastVideoUrl(null);
   };
 
-  const handleSubmit = async (e?: FormEvent) => {
+  const handleSubmit = async (e?: FormEvent, overrideText?: string) => {
     e?.preventDefault();
-    const textToSubmit = input.trim();
+    const textToSubmit = (overrideText || input).trim();
     if (!textToSubmit || isGeneratingText || isGeneratingVideo) return;
 
     const userMessage: Message = {
