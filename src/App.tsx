@@ -233,7 +233,7 @@ export default function App() {
           }
         }
 
-        const currentText = (finalTranscript || interimTranscript).trim();
+        const currentText = (finalTranscript + " " + interimTranscript).trim();
         if (currentText) {
           setInput(currentText);
 
@@ -376,6 +376,15 @@ export default function App() {
       };
       
       setMessages(prev => [...prev, tutorMessage]);
+      
+      // Speak the text using Web Speech API as fallback/immediate response
+      if (!isMuted) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(tutorText);
+        utterance.lang = selectedVoice.locale || "en-US";
+        window.speechSynthesis.speak(utterance);
+      }
+
       setIsGeneratingVideo(true);
 
       const createRes = await fetch("/api/avatar/create", {
@@ -636,7 +645,10 @@ export default function App() {
                 playsInline
                 muted={isMuted}
                 className="w-full h-full object-cover"
-                onPlay={() => setIsPlayingVideo(true)}
+                onPlay={() => {
+                  setIsPlayingVideo(true);
+                  window.speechSynthesis.cancel();
+                }}
                 onEnded={() => {
                   setIsPlayingVideo(false);
                 }}
