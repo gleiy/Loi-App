@@ -345,23 +345,23 @@ export default function App() {
     setIsGeneratingText(true);
 
     try {
+      // Improved prompt with explicit instructions
+      const prompt = `You are a friendly and academic English tutor. 
+      Help the user practice conversation, correct subtle mistakes, 
+      and use interesting metaphors. Keep answers concise (max 2-3 sentences).
+      
+      Conversation History:
+      ${messages.slice(-5).map(m => `${m.role.toUpperCase()}: ${m.text}`).join("\n")}
+      
+      USER: "${textToSubmit}"
+      TUTOR:`;
+
       const result = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: [
-          {
-            role: "user",
-            parts: [{
-              text: `You are a friendly and academic English tutor. 
-              Help the user practice conversation, correct subtle mistakes, 
-              and use interesting metaphors. Keep answers concise (max 2-3 sentences).
-              Current topic/Previous context: ${messages.slice(-3).map(m => m.text).join(" | ")}
-              User input: "${textToSubmit}"`
-            }]
-          }
-        ],
+        contents: prompt
       });
 
-      const tutorText = result.text || "I'm sorry, I couldn't process that.";
+      const tutorText = result.text || "I'm sorry, I encountered an issue with my neural link. Could you repeat that?";
       setIsGeneratingText(false);
       
       const tutorMessageId = Date.now().toString();
@@ -383,26 +383,35 @@ export default function App() {
           voiceId: selectedVoice.id 
         }),
       });
+      
+      if (!createRes.ok) {
+        throw new Error(`D-ID Create Error: ${createRes.status}`);
+      }
+
       const createData = await createRes.json();
       
       if (createData.id) {
         setMessages(prev => prev.map(m => m.id === tutorMessageId ? { ...m, id: createData.id } : m));
         setCurrentTalkId(createData.id);
       } else {
-        setIsGeneratingVideo(false);
-        const errorText = createData.error || "Generation failed";
-        setMessages(prev => [...prev, {
-          id: Date.now().toString(),
-          role: "tutor",
-          text: `(System Note: Video generation failed - ${errorText}. Please ensure your D-ID API key is set in the Secrets panel.)`,
-          timestamp: new Date()
-        }]);
+        throw new Error(createData.error || "No talk ID returned from D-ID");
       }
 
-    } catch (error) {
-      console.error("Error:", error);
+    } catch (error: any) {
+      console.error("Interaction Error:", error);
       setIsGeneratingText(false);
       setIsGeneratingVideo(false);
+      
+      const errorMessage = error.message.includes("D-ID") 
+        ? "(System: Video generation failed. Please check your D-ID API key in the Secrets panel.)"
+        : "(System: Neural connection interrupted. Please try again.)";
+
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        role: "tutor",
+        text: errorMessage,
+        timestamp: new Date()
+      }]);
     }
   };
 
@@ -629,10 +638,24 @@ export default function App() {
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
-                  <div className="w-20 h-20 bg-white/10 rounded-full flex items-center justify-center animate-pulse backdrop-blur-md border border-white/20">
-                    <Video size={32} className="text-white/40" />
-                  </div>
-                  <p className="text-xs font-bold tracking-[0.2em] uppercase text-white/40">Neural Link Ready</p>
+                  {(isGeneratingText || isGeneratingVideo) ? (
+                    <div className="flex flex-col items-center gap-4">
+                      <div className="relative">
+                        <Loader2 size={40} className="text-white animate-spin" />
+                        <div className="absolute inset-0 bg-white/20 blur-xl animate-pulse rounded-full" />
+                      </div>
+                      <p className="text-[10px] font-bold tracking-[0.3em] uppercase text-white animate-pulse">
+                        {isGeneratingText ? "Thinking..." : "Generating Video..."}
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="w-20 h-20 bg-white/10 rounded-full flex items-center justify-center animate-pulse backdrop-blur-md border border-white/20">
+                        <Video size={32} className="text-white/40" />
+                      </div>
+                      <p className="text-xs font-bold tracking-[0.2em] uppercase text-white/40">Neural Link Ready</p>
+                    </>
+                  )}
                 </div>
               </div>
             )}
