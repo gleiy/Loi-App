@@ -359,8 +359,8 @@ export default function App() {
       TUTOR:`;
 
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt
+        model: "gemini-flash-latest",
+        contents: [{ role: "user", parts: [{ text: prompt }] }]
       });
       
       const tutorText = response.text || "I'm sorry, I encountered an issue with my neural link. Could you repeat that?";
@@ -387,7 +387,8 @@ export default function App() {
       });
       
       if (!createRes.ok) {
-        throw new Error(`D-ID Create Error: ${createRes.status}`);
+        const errorData = await createRes.json().catch(() => ({}));
+        throw new Error(`D-ID Error: ${errorData.error || createRes.status}`);
       }
 
       const createData = await createRes.json();
@@ -400,13 +401,13 @@ export default function App() {
       }
 
     } catch (error: any) {
-      console.error("Interaction Error:", error);
+      console.error("Interaction Error Details:", error);
       setIsGeneratingText(false);
       setIsGeneratingVideo(false);
       
       const errorMessage = error.message.includes("D-ID") 
-        ? "(System: Video generation failed. Please check your D-ID API key in the Secrets panel.)"
-        : "(System: Neural connection interrupted. Please try again.)";
+        ? `(System: Video generation failed - ${error.message})`
+        : `(System: Neural connection interrupted - ${error.message || "Unknown Error"})`;
 
       setMessages(prev => [...prev, {
         id: Date.now().toString(),
