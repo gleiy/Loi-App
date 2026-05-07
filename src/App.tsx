@@ -214,7 +214,7 @@ export default function App() {
               // Stop recognition to process and let the response play
               recognition.stop();
             }
-          }, 3000); // 3 seconds of silence
+          }, 1200); // 1.2 seconds of silence for natural flow
         }
       };
 
