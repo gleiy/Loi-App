@@ -19,7 +19,9 @@ import {
   MicOff,
   Settings,
   Globe,
-  Video
+  Video,
+  Phone,
+  PhoneOff
 } from "lucide-react";
 
 // Initialize Gemini
@@ -95,6 +97,8 @@ interface Message {
   videoUrl?: string;
   timestamp: Date;
 }
+
+const TUTOR_IMAGE = "https://i.ibb.co/1G0MXwFc/IMG-20260224-WA0017-jpg.jpg";
 
 export default function App() {
   const [messages, setMessages] = useState<Message[]>([
@@ -219,6 +223,11 @@ export default function App() {
       };
 
       recognition.onerror = (event: any) => {
+        if (event.error === 'no-speech') {
+          setIsListening(false);
+          return;
+        }
+
         console.error("Speech Recognition Error:", event.error);
         setIsListening(false);
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
@@ -226,7 +235,6 @@ export default function App() {
         const errorMessages: Record<string, string> = {
           'network': "Speech service unreachable. Try using Google Chrome or checking your internet connection.",
           'not-allowed': "Microphone access denied. Please check your browser/system permissions.",
-          'no-speech': "No speech detected. Please try again.",
           'language-not-supported': `Language ${selectedVoice.locale} is not supported by your browser.`,
           'aborted': "Recognition was stopped manually.",
           'service-not-allowed': "Speech service not allowed. Your browser might be blocking this feature."
@@ -399,9 +407,9 @@ export default function App() {
   };
 
   return (
-    <div className={`min-h-screen ${currentTheme.bg} font-sans ${currentTheme.text} overflow-hidden flex flex-col md:flex-row transition-all duration-500`}>
+    <div className={`h-screen ${currentTheme.bg} font-sans ${currentTheme.text} overflow-hidden flex flex-col-reverse md:flex-row transition-all duration-500`}>
       {/* Sidebar / Messages */}
-      <aside className={`w-full md:w-[400px] ${currentTheme.sidebar} border-r border-white/5 flex flex-col z-20 shadow-2xl`}>
+      <aside className={`w-full md:w-[400px] h-[60vh] md:h-full ${currentTheme.sidebar} border-r border-white/5 flex flex-col z-20 shadow-2xl shrink-0`}>
         <header className="p-6 border-b border-white/5 bg-black/20 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className={`${currentTheme.accent} p-2 rounded-xl transition-all duration-500`}>
@@ -604,6 +612,7 @@ export default function App() {
                 key={lastVideoUrl}
                 src={lastVideoUrl}
                 autoPlay
+                playsInline
                 className="w-full h-full object-cover"
                 onEnded={() => {
                   if (isCallActive) {
@@ -612,27 +621,61 @@ export default function App() {
                 }}
               />
             ) : (
-              <div className="flex flex-col items-center gap-6 opacity-20">
-                <div className="w-32 h-32 bg-white/10 rounded-full flex items-center justify-center animate-pulse">
-                  <Video size={48} className="text-white" />
+              <div className="relative w-full h-full flex flex-col items-center justify-center">
+                <img 
+                  src={TUTOR_IMAGE} 
+                  alt="Tutor"
+                  className="w-full h-full object-cover opacity-60 grayscale-[0.5] contrast-[1.1]"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
+                  <div className="w-20 h-20 bg-white/10 rounded-full flex items-center justify-center animate-pulse backdrop-blur-md border border-white/20">
+                    <Video size={32} className="text-white/40" />
+                  </div>
+                  <p className="text-xs font-bold tracking-[0.2em] uppercase text-white/40">Neural Link Ready</p>
                 </div>
-                <p className="text-lg font-medium tracking-wide uppercase">Connecting...</p>
               </div>
             )}
           </div>
 
           {/* Interface Overlays */}
-          <div className="absolute top-10 left-8 flex items-center gap-3">
-            <div className="bg-red-500 px-3 py-1 rounded-full flex items-center gap-2 shadow-lg">
-              <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
-              <span className="text-[9px] font-bold uppercase tracking-widest text-white">Live Session</span>
+          <div className="absolute top-10 left-8 flex items-center gap-3 z-30">
+            <div className={`px-3 py-1 rounded-full flex items-center gap-2 shadow-lg transition-all ${isCallActive ? 'bg-red-500' : 'bg-white/10 backdrop-blur-md'}`}>
+              <div className={`w-1.5 h-1.5 bg-white rounded-full ${isCallActive ? 'animate-pulse' : 'opacity-40'}`} />
+              <span className="text-[9px] font-bold uppercase tracking-widest text-white">
+                {isCallActive ? 'Live Session' : 'Offline'}
+              </span>
             </div>
           </div>
 
-          <div className="absolute bottom-12 right-6 left-6 flex flex-col gap-4">
+          <AnimatePresence>
+            {!isCallActive && (
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/40 backdrop-blur-[2px]"
+              >
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={toggleCall}
+                  className="w-24 h-24 bg-green-500 rounded-full flex items-center justify-center shadow-[0_0_50px_rgba(34,197,94,0.4)] transition-all group"
+                >
+                  <Phone className="text-white w-10 h-10 group-hover:rotate-12 transition-transform" />
+                </motion.button>
+                <div className="mt-8 text-center">
+                  <h3 className="text-xl font-bold tracking-tight text-white">Call Tutor</h3>
+                  <p className="text-xs text-white/40 uppercase tracking-[0.2em] mt-2 font-bold">Start voice practice</p>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <div className="absolute bottom-12 right-6 left-6 flex flex-col gap-4 z-30">
             <div className="bg-black/40 backdrop-blur-xl p-5 rounded-3xl border border-white/10 shadow-2xl">
               <div className="flex items-center gap-2 mb-2">
-                <div className={`w-2 h-2 ${currentTheme.accent} rounded-full flex-shrink-0`} />
+                <div className={`w-2 h-2 ${currentTheme.accent} rounded-full flex-shrink-0 ${isCallActive ? 'animate-pulse' : ''}`} />
                 <span className="text-[10px] font-bold uppercase tracking-widest text-white/50">{selectedVoice.name} (Tutor)</span>
               </div>
               <p className="text-[13px] font-medium text-white/90 leading-relaxed italic">
@@ -640,20 +683,27 @@ export default function App() {
               </p>
             </div>
 
-            <div className="flex gap-2 justify-center">
-              <button 
-                onClick={toggleCall}
-                className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${
-                  isCallActive ? "bg-red-500 text-white animate-pulse" : "bg-white/10 text-white/60 hover:bg-white/20"
-                } backdrop-blur-md border border-white/10 cursor-pointer`}
-              >
-                {isCallActive ? <MicOff size={20} /> : <Mic size={20} />}
-              </button>
-              <div className="w-12 h-12 rounded-2xl bg-white/10 backdrop-blur-md border border-white/10 flex items-center justify-center hover:bg-white/20 transition-all cursor-pointer">
-                <Volume2 size={20} className="text-white/60" />
+            <div className="flex gap-4 justify-center">
+              {isCallActive ? (
+                <button 
+                  onClick={toggleCall}
+                  className="w-16 h-16 bg-red-500 text-white rounded-full flex items-center justify-center shadow-xl hover:bg-red-600 transition-all active:scale-95"
+                >
+                  <PhoneOff size={28} />
+                </button>
+              ) : (
+                <button 
+                  onClick={toggleCall}
+                  className="w-14 h-14 bg-green-500 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-green-600 transition-all active:scale-95"
+                >
+                  <Phone size={24} />
+                </button>
+              )}
+              <div className="w-14 h-14 rounded-full bg-white/10 backdrop-blur-md border border-white/10 flex items-center justify-center hover:bg-white/20 transition-all cursor-pointer">
+                <Volume2 size={24} className="text-white/60" />
               </div>
-              <div className="w-12 h-12 rounded-2xl bg-white/10 backdrop-blur-md border border-white/10 flex items-center justify-center hover:bg-white/20 transition-all cursor-pointer">
-                <RefreshCcw size={20} className="text-white/60" />
+              <div className="w-14 h-14 rounded-full bg-white/10 backdrop-blur-md border border-white/10 flex items-center justify-center hover:bg-white/20 transition-all cursor-pointer">
+                <RefreshCcw size={24} className="text-white/60" />
               </div>
             </div>
           </div>
