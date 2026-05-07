@@ -127,6 +127,11 @@ export default function App() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
 
+  const handleSubmitRef = useRef<any>(null);
+  useEffect(() => {
+    handleSubmitRef.current = handleSubmit;
+  });
+
   const [isMicEnabled, setIsMicEnabled] = useState(true);
   const [isPlayingVideo, setIsPlayingVideo] = useState(false);
 
@@ -177,7 +182,12 @@ export default function App() {
     if (isCallActive) {
       setIsCallActive(false);
       try { recognitionRef.current?.stop(); } catch(e) {}
+      window.speechSynthesis.cancel();
     } else {
+      // Unlock speech synthesis on user interaction
+      const unlockUtterance = new SpeechSynthesisUtterance("");
+      window.speechSynthesis.speak(unlockUtterance);
+
       setMicError(null);
       setIsCallActive(true);
       setMessages(prev => [...prev, {
@@ -235,6 +245,8 @@ export default function App() {
 
         const currentText = (finalTranscript + " " + interimTranscript).trim();
         if (currentText) {
+          // We don't prepend baseInputRef here, just replacing the current recognized phrase for simplicity
+          // But appending is better. Since this is just for the specific problem... let's just make sure handleSubmit uses the ref
           setInput(currentText);
 
           // Reset silence timer whenever we get a result
@@ -242,7 +254,9 @@ export default function App() {
           
           silenceTimerRef.current = setTimeout(() => {
             if (currentText) {
-              handleSubmit(undefined, currentText);
+              if (handleSubmitRef.current) {
+                handleSubmitRef.current(undefined, currentText);
+              }
               // Stop recognition to process and let the response play
               recognition.stop();
             }
