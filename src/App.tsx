@@ -120,7 +120,7 @@ export default function App() {
   const [isCallActive, setIsCallActive] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
   const [selectedVoice, setSelectedVoice] = useState<Voice>(VOICES[0]);
-  const [currentTheme, setCurrentTheme] = useState<Theme>(THEMES.midnight);
+  const [currentTheme, setCurrentTheme] = useState<Theme>(THEMES.cyber);
   const [isMuted, setIsMuted] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsTab, setSettingsTab] = useState<"voices" | "themes">("voices");
