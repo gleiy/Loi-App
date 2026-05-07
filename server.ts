@@ -33,26 +33,22 @@ async function startServer() {
       const cleanKey = rawKey.replace(/^Basic\s+/i, "").trim();
 
       if (cleanKey.includes(":")) {
-        // User provided user:pass or base64(user):pass
-        const [part1, part2] = cleanKey.split(":");
-        try {
-          // Check if part1 is base64 encoded email
-          const decodedPart1 = Buffer.from(part1, "base64").toString("utf8");
-          if (decodedPart1.includes("@")) {
-            authHeader = `Basic ${Buffer.from(`${decodedPart1}:${part2}`).toString("base64")}`;
-          } else {
-            authHeader = `Basic ${Buffer.from(cleanKey).toString("base64")}`;
-          }
-        } catch {
-          authHeader = `Basic ${Buffer.from(cleanKey).toString("base64")}`;
-        }
+        authHeader = `Basic ${Buffer.from(cleanKey).toString("base64")}`;
       } else {
-        // Assume cleanKey is already the final base64 or just the key
-        // If it's short, it might be just the key, but we'll assume the user followed instructions
         authHeader = `Basic ${cleanKey}`;
       }
 
-      console.log("D-ID: Generating talk with voice:", voiceId || "en-US-JennyNeural");
+      const elevenLabsKey = process.env.ELEVEN_LABS_API_KEY || "sk_733b572f8e1bd226702f94ba4c11a758da47b8311586eaf5";
+
+      console.log("D-ID: Generating talk with voice:", voiceId || "21m00Tcm4TlvDq8ikWAM");
+
+      const providerOptions = elevenLabsKey ? {
+        type: "elevenlabs",
+        voice_id: voiceId || "21m00Tcm4TlvDq8ikWAM"
+      } : {
+        type: "microsoft", 
+        voice_id: voiceId || "en-US-JennyNeural" 
+      };
 
       const response = await axios.post(
         "https://api.d-id.com/talks",
@@ -60,10 +56,7 @@ async function startServer() {
           script: {
             type: "text",
             input: text,
-            provider: { 
-              type: "microsoft", 
-              voice_id: voiceId || "en-US-JennyNeural" 
-            }
+            provider: providerOptions
           },
           config: { fluent: "true", pad_audio: "0.0" },
           source_url: "https://i.ibb.co/1G0MXwFc/IMG-20260224-WA0017-jpg.jpg"
@@ -72,7 +65,8 @@ async function startServer() {
           headers: {
             Authorization: authHeader,
             "Content-Type": "application/json",
-            "accept": "application/json"
+            "accept": "application/json",
+            "x-api-key-external": JSON.stringify({ elevenlabs: elevenLabsKey })
           },
           timeout: 10000
         }
@@ -107,15 +101,7 @@ async function startServer() {
       const cleanKeyStatus = rawKey.replace(/^Basic\s+/i, "").trim();
       
       if (cleanKeyStatus.includes(":")) {
-        const [p1, p2] = cleanKeyStatus.split(":");
-        try {
-          const d1 = Buffer.from(p1, "base64").toString("utf8");
-          authHeaderStatus = d1.includes("@") 
-            ? `Basic ${Buffer.from(`${d1}:${p2}`).toString("base64")}` 
-            : `Basic ${Buffer.from(cleanKeyStatus).toString("base64")}`;
-        } catch {
-          authHeaderStatus = `Basic ${Buffer.from(cleanKeyStatus).toString("base64")}`;
-        }
+        authHeaderStatus = `Basic ${Buffer.from(cleanKeyStatus).toString("base64")}`;
       } else {
         authHeaderStatus = `Basic ${cleanKeyStatus}`;
       }

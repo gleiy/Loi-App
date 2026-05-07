@@ -37,12 +37,12 @@ interface Voice {
 }
 
 const VOICES: Voice[] = [
-  { id: "en-US-JennyNeural", name: "Jenny", gender: "Female", lang: "English (US)", locale: "en-US" },
-  { id: "en-US-AndrewNeural", name: "Andrew", gender: "Male", lang: "English (US)", locale: "en-US" },
-  { id: "en-GB-SoniaNeural", name: "Sonia", gender: "Female", lang: "English (UK)", locale: "en-GB" },
-  { id: "en-GB-RyanNeural", name: "Ryan", gender: "Male", lang: "English (UK)", locale: "en-GB" },
-  { id: "es-ES-ElviraNeural", name: "Elvira", gender: "Female", lang: "Spanish (ES)", locale: "es-ES" },
-  { id: "es-MX-JorgeNeural", name: "Jorge", gender: "Male", lang: "Spanish (MX)", locale: "es-MX" },
+  { id: "21m00Tcm4TlvDq8ikWAM", name: "Rachel (ElevenLabs)", gender: "Female", lang: "English (US)", locale: "en-US" },
+  { id: "TX3OmZsPIl5K0X8Q9cW9", name: "Josh (ElevenLabs)", gender: "Male", lang: "English (US)", locale: "en-US" },
+  { id: "en-US-JennyNeural", name: "Jenny (Microsoft)", gender: "Female", lang: "English (US)", locale: "en-US" },
+  { id: "en-US-AndrewNeural", name: "Andrew (Microsoft)", gender: "Male", lang: "English (US)", locale: "en-US" },
+  { id: "en-GB-SoniaNeural", name: "Sonia (Microsoft)", gender: "Female", lang: "English (UK)", locale: "en-GB" },
+  { id: "es-ES-ElviraNeural", name: "Elvira (Microsoft)", gender: "Female", lang: "Spanish (ES)", locale: "es-ES" },
 ];
 
 type ThemeType = "midnight" | "library" | "cyber";
@@ -126,11 +126,18 @@ export default function App() {
   const [settingsTab, setSettingsTab] = useState<"voices" | "themes">("voices");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
+  const baseInputRef = useRef<string>("");
 
   const handleSubmitRef = useRef<any>(null);
   useEffect(() => {
     handleSubmitRef.current = handleSubmit;
   });
+
+  // Track the latest input for speech
+  const inputRef = useRef(input);
+  useEffect(() => {
+    inputRef.current = input;
+  }, [input]);
 
   const [isMicEnabled, setIsMicEnabled] = useState(true);
   const [isPlayingVideo, setIsPlayingVideo] = useState(false);
@@ -160,7 +167,7 @@ export default function App() {
         } catch (e) {
           console.error("Auto-start mic Error:", e);
         }
-      }, 300);
+      }, 1000);
     } else if (!shouldBeListening && isListening) {
       if (recognitionRef.current) {
         try {
@@ -229,6 +236,7 @@ export default function App() {
       recognition.onstart = () => {
         setIsListening(true);
         setMicError(null);
+        baseInputRef.current = inputRef.current.trim();
       };
 
       recognition.onresult = (event: any) => {
@@ -243,24 +251,24 @@ export default function App() {
           }
         }
 
-        const currentText = (finalTranscript + " " + interimTranscript).trim();
-        if (currentText) {
-          // We don't prepend baseInputRef here, just replacing the current recognized phrase for simplicity
-          // But appending is better. Since this is just for the specific problem... let's just make sure handleSubmit uses the ref
-          setInput(currentText);
+        const currentSpeech = (finalTranscript + " " + interimTranscript).trim();
+        if (currentSpeech) {
+          const prefix = baseInputRef.current ? baseInputRef.current + " " : "";
+          const combinedText = prefix + currentSpeech;
+          setInput(combinedText);
 
           // Reset silence timer whenever we get a result
           if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
           
           silenceTimerRef.current = setTimeout(() => {
-            if (currentText) {
+            if (combinedText) {
               if (handleSubmitRef.current) {
-                handleSubmitRef.current(undefined, currentText);
+                handleSubmitRef.current(undefined, combinedText);
               }
               // Stop recognition to process and let the response play
               recognition.stop();
             }
-          }, 1200); // 1.2 seconds of silence for natural flow
+          }, 1500); // 1.5 seconds of silence for natural flow
         }
       };
 
