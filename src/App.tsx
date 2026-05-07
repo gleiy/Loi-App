@@ -4,7 +4,6 @@
  */
 
 import { useState, useRef, useEffect, FormEvent } from "react";
-import { GoogleGenAI } from "@google/genai";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Send, 
@@ -25,8 +24,7 @@ import {
   PhoneOff
 } from "lucide-react";
 
-// Initialize Gemini
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+// Gemini now initialized on server
 
 interface Voice {
   id: string;
@@ -316,6 +314,13 @@ export default function App() {
       interval = setInterval(async () => {
         try {
           const res = await fetch(`/api/avatar/status/${currentTalkId}`);
+          
+          const contentType = res.headers.get("content-type");
+          if (!contentType || !contentType.includes("application/json")) {
+            console.error("Non-JSON Response from /api/avatar/status");
+            throw new Error("Server returned an invalid response. The dev server might need a restart.");
+          }
+          
           const data = await res.json();
           
           if (data.status === "done") {
@@ -368,25 +373,28 @@ export default function App() {
     setIsGeneratingText(true);
 
     try {
-      // Improved prompt with explicit instructions
-      // Include the user message in context since state hasn't updated yet in this render cycle
-      const context = [...messages, userMessage];
-      const prompt = `You are a friendly and academic English tutor. 
-      Help the user practice conversation, correct subtle mistakes, 
-      and use interesting metaphors. Keep answers concise (max 2-3 sentences).
-      
-      Conversation History:
-      ${context.slice(-6).map(m => `${m.role.toUpperCase()}: ${m.text}`).join("\n")}
-      
-      USER: "${textToSubmit}"
-      TUTOR:`;
+      const context = [...messages, userMessage].slice(-6);
 
-      const response = await ai.models.generateContent({
-        model: "gemini-flash-latest",
-        contents: [{ role: "user", parts: [{ text: prompt }] }]
+      const chatRes = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ textToSubmit, context })
       });
       
-      const tutorText = response.text || "I'm sorry, I encountered an issue with my neural link. Could you repeat that?";
+      const contentType = chatRes.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        const text = await chatRes.text();
+        console.error("Non-JSON Response from /api/chat:", text.slice(0, 500));
+        throw new Error("Server returned an invalid response (not JSON). Please try again or check the dev server logs.");
+      }
+      
+      if (!chatRes.ok) {
+        const errorData = await chatRes.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to get response from Gemini");
+      }
+      
+      const chatData = await chatRes.json();
+      const tutorText = chatData.text || "I'm sorry, I encountered an issue with my neural link. Could you repeat that?";
       setIsGeneratingText(false);
       
       const tutorMessageId = Date.now().toString();
@@ -418,6 +426,13 @@ export default function App() {
         }),
       });
       
+      const createContentType = createRes.headers.get("content-type");
+      if (!createContentType || !createContentType.includes("application/json")) {
+        const text = await createRes.text();
+        console.error("Non-JSON Response from /api/avatar/create:", text.slice(0, 500));
+        throw new Error("Server returned an invalid response. The D-ID API key may be missing or the dev server might need a restart.");
+      }
+      
       if (!createRes.ok) {
         const errorData = await createRes.json().catch(() => ({}));
         throw new Error(`D-ID Error: ${errorData.error || createRes.status}`);
@@ -433,7 +448,9 @@ export default function App() {
       }
 
     } catch (error: any) {
-      console.error("Interaction Error Details:", error);
+      if (error.message && !error.message.includes("offline")) {
+        console.warn("Issue with avatar delivery:", error);
+      }
       setIsGeneratingText(false);
       setIsGeneratingVideo(false);
       
